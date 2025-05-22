@@ -3,16 +3,20 @@ package org.example.diplomamainservice.Controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.diplomamainservice.Client.LlmServiceClient;
 import org.example.diplomamainservice.Client.MessageServiceClient;
+import org.example.diplomamainservice.Client.TtsServiceClient;
+import org.example.diplomamainservice.Dto.TtsRequest;
 import org.example.userservice.domain.model.Enum.Role;
 import org.example.userservice.ui.dto.MessageDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Map;
 
@@ -27,6 +31,9 @@ public class WebSocketController {
     private LlmServiceClient llmServiceClient;
 
     @Autowired
+    private TtsServiceClient ttsServiceClient;
+
+    @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
     @MessageMapping("/chat.sendMessage")
@@ -37,7 +44,10 @@ public class WebSocketController {
 
         if (Role.USER.equals(message.getRole())) {
             try {
-                Map<String, String> ragRequest = Collections.singletonMap("query", message.getMessage());
+                Map<String, String> ragRequest = Map.of(
+                        "query", message.getMessage(),
+                        "chat_id", message.getChatId().toString()
+                );
                 String llmResponseJson = llmServiceClient.processWithRag(ragRequest);
 
                 log.info("LLM Response: {}", llmResponseJson);
@@ -46,6 +56,20 @@ public class WebSocketController {
                 String botResponse = llmResponse.getOrDefault("response", "Ошибка при получении ответа");
 
                 MessageDTO botMessage = new MessageDTO(null, botResponse, Role.BOT, message.getChatId());
+
+                TtsRequest ttsRequest = new TtsRequest();
+                ttsRequest.setText(botResponse);
+
+                ResponseEntity<byte[]> audioResponse = ttsServiceClient.generateSpeech(ttsRequest);
+                log.error("TTS service: {}", audioResponse);
+
+                if (audioResponse.getStatusCode().is2xxSuccessful() && audioResponse.hasBody()) {
+                    String audioBase64 = Base64.getEncoder().encodeToString(audioResponse.getBody());
+                    log.error("TTS service error: {}", audioResponse);
+                    botMessage.setAudioData(audioBase64);
+                } else {
+                    log.error("TTS service error: {}", audioResponse.getStatusCode());
+                }
 
                 log.info(botMessage.getChatId().toString() + " " + botMessage.getRole());
                 log.info(botResponse + "------------------------------------------");

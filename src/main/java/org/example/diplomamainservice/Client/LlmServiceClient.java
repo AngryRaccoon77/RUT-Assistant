@@ -10,6 +10,6 @@ import java.util.Map;
 @FeignClient(name = "llm-service", url = "${llm.service.url}")
 public interface LlmServiceClient {
 
-    @PostMapping("/rag-process")
+    @PostMapping("/chat")
     String processWithRag(@RequestBody Map<String, String> request);
 }
